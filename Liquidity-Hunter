@@ -1,0 +1,445 @@
+# CLASSIFIED // HUNTER
+
+### Liquidity Detection · Market Structure · Event Intelligence
+
+Hunter is a liquidity-analysis application that identifies structural liquidity levels, monitors price interactions with those levels, classifies liquidity events, and maintains a persistent record of market observations.
+
+Built on the shared `classified` infrastructure, Hunter uses standardized market data to analyze liquidity across multiple timeframes. Its architecture separates liquidity detection, event classification, notification delivery, backtesting, and trade lifecycle management.
+
+Hunter is a standalone application. It is **not an installable Python package**.
+
+---
+
+## Features
+
+- Structural liquidity detection using completed OHLCV candles.
+- Swing highs and lows, equal highs and lows, previous-day levels, session levels, and established range boundaries.
+- Liquidity-event classification, including sweeps, breakouts, failed breakouts, and expired events.
+- Persistent event state and auditable state-transition history.
+- Multi-timeframe market-data retrieval.
+- Manual, automatic, and hybrid market selection.
+- Telegram administration and separate liquidity and trading notification channels.
+- SQLite persistence and structured application logging.
+- Deterministic backtesting with configurable risk and execution assumptions.
+- ClassifiedLens chart-rendering integration for visual liquidity notifications.
+- Paper/disabled execution mode.
+
+---
+
+## Getting Started
+
+### Requirements
+
+- Python and the dependencies specified by the project.
+- Access to the shared `classified` infrastructure.
+- Exchange configuration and connectivity where required.
+- Telegram bot credentials for Telegram functionality.
+- ClassifiedLens rendering service configuration for chart attachments.
+
+### Configuration
+
+Configure the local `.env` file in the Hunter project directory.
+
+```dotenv
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ADMIN_CHAT_ID=
+TELEGRAM_LIQUIDITY_CHANNEL_ID=
+TELEGRAM_TRADING_CHANNEL_ID=
+
+HUNTER_MARKET_SELECTION_MODE=manual
+HUNTER_AUTO_MARKET_LIMIT=20
+HUNTER_AUTO_MARKET_REFRESH_SECONDS=900
+
+HUNTER_VISUALIZATION_RENDER_URL=
+```
+
+The Telegram credentials identify the bot, administrator chat, and two independent notification destinations.
+
+The rendering URL retains its existing environment-variable name for compatibility with the current implementation. It configures the ClassifiedLens rendering service.
+
+Keep real credentials and private identifiers out of public repositories.
+
+### Run Hunter
+
+From the Hunter directory:
+
+```powershell
+py -m app.main
+```
+
+Hunter runs through its application entry point and is not launched as an installed Python package.
+
+**Execution mode:** Paper/disabled. The current entry point rejects live execution.
+
+---
+
+## Architecture
+
+Hunter consumes market data and exchange services through the shared `classified` package.
+
+```text
+Hunter
+   |
+   v
+ClassifiedMarketDataGateway
+   |
+   v
+Classified MarketDataManager
+   |
+   v
+ExchangeAdapter / CCXT
+   |
+   v
+BingX
+```
+
+Hunter does not import CCXT or communicate directly with BingX. Exchange connectivity, market-data retrieval, and standardized candle delivery remain behind the Classified integration boundary.
+
+Hunter owns its analytical requirements and liquidity-processing logic. This separation prevents Hunter from duplicating the shared market-data infrastructure.
+
+### Market-data requirements
+
+Hunter's default candle requirements are:
+
+| Timeframe | Candle count | Purpose |
+|---|---:|---|
+| 4H | 200 | Macro context |
+| 1H | 300 | Intermediate context |
+| 15M | 400 | Setup development |
+| 5M | 500 | Execution context |
+
+These are Hunter-specific defaults, not hard limits imposed by Classified. They can be adjusted as the strategy and analytical requirements evolve.
+
+The gateway supports both single-timeframe and multi-timeframe requests while preserving the standardized candle model.
+
+---
+
+## Liquidity Detection
+
+Hunter identifies potential liquidity levels from completed OHLCV candles. These candidates represent observable market structure, not confirmed stop orders or trade signals.
+
+### Supported liquidity candidates
+
+**Swing highs and lows**
+
+Structural pivots confirmed using configurable left- and right-side confirmation bars.
+
+**Equal highs and equal lows**
+
+Clusters derived from confirmed structural pivots.
+
+**Previous-day highs and lows**
+
+Levels calculated from the previous completed calendar day using an explicitly configured timezone.
+
+**Session highs and lows**
+
+Optional levels for named trading sessions supplied through configuration.
+
+**Established range highs and lows**
+
+Range boundaries accepted only when both boundaries have repeated touches.
+
+### Candidate persistence
+
+Liquidity candidates are stored in the `liquidity_candidates` table.
+
+Candidate records preserve information such as:
+
+- Source and liquidity type.
+- Side and price level.
+- Detection timestamp.
+- Pivot and touch metadata.
+
+Duplicate active candidates are prevented through repository-level checks and a database unique index.
+
+Round-number liquidity is disabled by default because suitable price increments depend on the instrument. It can be introduced through explicit instrument-aware configuration.
+
+A candidate is an observed structural level. It does not, by itself, establish a sweep, breakout, reversal, trader intent, or trading opportunity.
+
+---
+
+## Liquidity Event Classification
+
+Hunter evaluates completed candles against persisted liquidity candidates and classifies observable interactions with those levels.
+
+### Event lifecycle
+
+```text
+LIQUIDITY CANDIDATE
+         |
+         v
+     VIOLATION
+         |
+    +----+----+
+    |         |
+    v         v
+ RECLAIM   ACCEPTANCE
+    |         |
+    v         v
+  SWEEP    BREAKOUT
+               |
+               v
+       FAILED BREAKOUT
+```
+
+Unresolved violations can also expire when they reach the configured event-age limit.
+
+### Event definitions
+
+| Event | Definition |
+|---|---|
+| `VIOLATION` | Price trades beyond a candidate liquidity level. |
+| `SWEEP` | A violation followed by a close back on the original side within the configured reclaim window. |
+| `BREAKOUT` | A violation followed by the configured number of closes beyond the level, establishing acceptance. |
+| `FAILED_BREAKOUT` | An accepted breakout subsequently closes back through the liquidity level. |
+| `EXPIRED` | An unresolved violation reaches its configured event-age limit. |
+
+A completed candle can contain a complete observable sweep or breakout. Hunter records the observable result without claiming to know the precise sequence of intrabar price movements.
+
+### Event identity and auditability
+
+Event identity includes the symbol, timeframe, liquidity type, side, price level, and violation-candle timestamp. This allows distinct liquidity interactions in the same market to be tracked independently.
+
+The latest event state is stored in `liquidity_events`. Every recorded state transition is retained in `liquidity_event_transitions`.
+
+Persistence is designed to be idempotent: processing the same completed candles again does not duplicate lifecycle transition records.
+
+Hunter distinguishes market observations from subsequent analytical and trading decisions. A liquidity event is not automatically a trade signal.
+
+---
+
+## Market Selection
+
+Hunter supports three market-universe modes.
+
+| Mode | Behavior |
+|---|---|
+| `MANUAL` | Uses the operator-selected market universe. |
+| `AUTO` | Discovers eligible active USDT linear perpetual swaps through the Classified integration boundary. |
+| `HYBRID` | Combines automatically discovered markets with manually selected markets. |
+
+`MANUAL` is the default and preserves the operator-selected universe.
+
+Automatic discovery is separate from liquidity detection and setup qualification.
+
+### Configuration
+
+```dotenv
+HUNTER_MARKET_SELECTION_MODE=manual
+HUNTER_AUTO_MARKET_LIMIT=20
+HUNTER_AUTO_MARKET_REFRESH_SECONDS=900
+```
+
+The market limit and automatic refresh interval can be adjusted through configuration.
+
+---
+
+## Telegram Control Center
+
+Hunter integrates directly with the Telegram Bot API for administration and notifications.
+
+### Administrative interface
+
+The Control Center includes views and navigation for:
+
+- Dashboard.
+- Positions.
+- Trade history.
+- Balance.
+- Performance.
+- Market scanning.
+- Settings.
+- Refresh and back navigation.
+
+The interface supports polling and inline-button callbacks. Destructive administrative operations, including trade deletion and history clearing, have protected placeholders.
+
+### Independent notification channels
+
+**Liquidity News / Updates**
+
+Communicates market observations and meaningful liquidity-event state changes. Liquidity observations are not presented as trade signals.
+
+**Trading Activity**
+
+Handles trading lifecycle information, including signals, orders, positions, fills, modifications, closures, PnL, invalidations, and execution errors.
+
+### Event threading and delivery
+
+Notification threads are identified by `(event_key, channel)` and persisted in SQLite.
+
+- A new event creates a root Telegram message.
+- Subsequent updates reply to the corresponding root.
+- Durable idempotency keys prevent duplicate transition notifications.
+- Delivery is paced per chat.
+- Telegram `retry_after` responses are handled through bounded retries.
+
+Notification delivery remains separate from event classification and the persistent audit history.
+
+### Liquidity notification policy
+
+Hunter retains the full liquidity-event lifecycle internally but applies a selective publication policy to the human-facing Liquidity News channel.
+
+Raw `VIOLATION` observations are not published individually.
+
+For each symbol, timeframe, and candle, the policy publishes at most one meaningful transition, prioritizing:
+
+1. `SWEEP`
+2. `FAILED_BREAKOUT`
+3. `BREAKOUT`
+
+This keeps the notification feed focused without discarding the underlying event transitions from persistent storage.
+
+---
+
+## ClassifiedLens Integration
+
+Hunter integrates with **ClassifiedLens** for chart rendering and visual liquidity notifications.
+
+Hunter supplies relevant market candles and semantic liquidity overlays. ClassifiedLens renders the chart as a PNG image, which Hunter can attach to the corresponding Telegram notification.
+
+### Rendering workflow
+
+```text
+Hunter
+   |
+   | Candles + liquidity overlays
+   v
+ClassifiedLens Render Service
+   |
+   | Rendered PNG
+   v
+Hunter Notification Service
+   |
+   v
+Telegram
+```
+
+Hunter remains responsible for liquidity analysis, event state, notification policy, and persistence. ClassifiedLens is responsible for rendering the supplied chart data.
+
+### Start the rendering service
+
+From the ClassifiedLens application directory:
+
+```bash
+npm run build
+npm run render-server
+```
+
+Configure the rendering endpoint in Hunter's local environment:
+
+```dotenv
+HUNTER_VISUALIZATION_RENDER_URL=
+```
+
+The environment variable name is retained for compatibility with the current implementation.
+
+### Rendering failure and retry behavior
+
+When a chart attachment is supplied, Hunter sends the event explanation as the photo caption. This allows a liquidity event to be delivered as one photo message rather than a text message followed by a separate chart reply.
+
+If the rendering service is unavailable, Hunter records the notification failure and does not advance the relevant stream checkpoint. The observation remains eligible for retry instead of being silently lost.
+
+---
+
+## Persistent Storage
+
+Hunter uses SQLite as its persistent application-state store.
+
+**Default database:**
+
+```text
+data/hunter.db
+```
+
+The database is initialized automatically by the application.
+
+### Persisted records
+
+The database covers:
+
+- Bot configuration and settings.
+- Markets and liquidity candidates.
+- Liquidity events and structure events.
+- Setups, orders, positions, and trades.
+- Trade lifecycle events.
+- Notifications and Telegram thread IDs.
+- Users and permissions.
+- Performance snapshots.
+- System events.
+
+The application foundation includes schema initialization, database health checks, system-event persistence, application logging, dedicated error logging, canonical domain models, subsystem interfaces, and foundation tests.
+
+The database is the source of persistent application state. Log files remain separate.
+
+---
+
+## Backtesting
+
+Hunter includes a deterministic backtesting engine that is separate from the paper/live runtime. Liquidity events are not automatically treated as trading signals.
+
+The engine supports:
+
+- Risk-based position sizing.
+- Structural stop-loss and target levels supplied by a setup policy.
+- Trading fees and slippage.
+- Daily loss limits.
+- Consecutive-loss limits.
+- Missed and unfinished entry handling.
+- Explicit OHLCV ambiguity policies.
+- Trade-level R-multiples and PnL.
+- Fee and slippage accounting.
+- Drawdown and losing-streak metrics.
+
+Backtests should be validated out of sample. Finer-grained execution data is necessary when intrabar sequencing materially affects the outcome.
+
+The engine does not invent a closing trade at the end of a dataset simply to force completion.
+
+Backtesting results do not guarantee live trading performance.
+
+---
+
+## Engineering Principles
+
+Hunter is built around the following principles:
+
+**Observable evidence**
+
+Liquidity detection and event classification are based on market data rather than claims about hidden orders or trader intent.
+
+**Separation of responsibilities**
+
+Market-data infrastructure, candidate detection, event classification, setup qualification, trade management, and notification delivery remain distinct responsibilities.
+
+**Persistent auditability**
+
+Event state and lifecycle transitions are stored so processing can be repeated without duplicating recorded transitions.
+
+**Controlled notifications**
+
+The notification policy filters raw observations for readability while retaining the underlying event history.
+
+**Execution safety**
+
+Live execution is rejected by the current application entry point. Hunter remains paper/disabled only.
+
+**Recoverable delivery**
+
+Chart-rendering failures are recorded, and the relevant notification checkpoint is not advanced when the rendering failure prevents delivery.
+
+---
+
+## Important Limitations
+
+- Liquidity candidates do not prove that stop orders exist at a particular price.
+- Sweeps and breakouts describe observable price behavior, not guaranteed future direction.
+- A detected liquidity event is not automatically a qualified setup or trade signal.
+- Candle-based backtesting may not resolve intrabar execution order precisely.
+- Successful chart rendering depends on the configured ClassifiedLens service.
+- Live trade execution is not enabled by the current entry point.
+
+---
+
+## License
+
+No license is specified in this README.
