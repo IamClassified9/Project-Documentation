@@ -1,0 +1,207 @@
+# V4 Scalper
+### New York Range Breakout · Re-Entry Confirmation · Structured Risk Management
+
+**A rule-based scalping system built around the New York midnight range, five-minute candle confirmation, and predefined risk-to-reward levels.**
+
+V4 Scalper identifies price breakouts beyond a defined New York trading range and waits for price to close back inside that range before determining a trade direction.
+
+Rather than treating every breakout as a trade, the strategy uses a breakout-and-re-entry sequence to identify potential failed breakouts and reversals.
+
+The application runs from the V4 project environment and maintains persistent trade state using SQLite.
+
+---
+
+## Strategy Overview
+
+The strategy uses the first four hours of the New York day to establish a reference range.
+
+After the range is established, the system monitors closed five-minute candles for a breakout followed by a confirmed close back inside the range.
+
+<box gap={2}>
+  <row align="start" gap={3}>
+    <box background="surface-secondary" radius="lg" size="44px" align="center" justify="center">
+      <icon name="clock" size="xl"/>
+    </box>
+    <box flex="1" gap={1}>
+      **01 — Build the New York range**
+
+      The range is defined by price action from 00:00 to 04:00 New York time, using five-minute candles.
+    </box>
+  </row>
+  <row align="start" gap={3}>
+    <box background="surface-secondary" radius="lg" size="44px" align="center" justify="center">
+      <icon name="trending-up" size="xl"/>
+    </box>
+    <box flex="1" gap={1}>
+      **02 — Detect a breakout**
+
+      A closed five-minute candle must close above the range high or below the range low.
+    </box>
+  </row>
+  <row align="start" gap={3}>
+    <box background="surface-secondary" radius="lg" size="44px" align="center" justify="center">
+      <icon name="repeat" size="xl"/>
+    </box>
+    <box flex="1" gap={1}>
+      **03 — Confirm re-entry**
+
+      Price must subsequently close back inside the established range. A breakout alone is not sufficient.
+    </box>
+  </row>
+  <row align="start" gap={3}>
+    <box background="surface-secondary" radius="lg" size="44px" align="center" justify="center">
+      <icon name="shield-check" size="xl"/>
+    </box>
+    <box flex="1" gap={1}>
+      **04 — Define the trade**
+
+      The direction is determined by the breakout side, while the breakout candle's extreme establishes the stop-loss reference.
+    </box>
+  </row>
+</box>
+
+## Trading Rules
+
+| Condition | Trade direction | Stop-loss reference |
+|---|---|---|
+| Break above range, then close back inside | SHORT | High of breakout candle |
+| Break below range, then close back inside | LONG | Low of breakout candle |
+
+The system uses closed candles for breakout and re-entry confirmation, rather than relying solely on temporary intrabar price movements.
+
+### Range definition
+
+- **Timezone:** New York local time.
+- **Range window:** 00:00–04:00.
+- **Candle interval:** 5 minutes.
+- **Range high:** Highest price within the defined range.
+- **Range low:** Lowest price within the defined range.
+
+The New York timezone should be handled using timezone-aware logic so daylight-saving changes do not shift the intended session window.
+
+---
+
+## Risk and Reward Framework
+
+V4 defines trade management using an R-multiple framework, where **1R represents the initial distance between the entry price and the stop-loss price**.
+
+| Milestone | Default target |
+|---|---:|
+| TP1 | 1R |
+| TP2 | 1.5R |
+| TP3 | 2R |
+
+TP3 is the default final target at 2R. TP1 and TP2 are intermediate milestones.
+
+The actual outcome depends on entry execution, stop placement, market conditions, and the system's implemented trade-management rules. Target levels alone do not guarantee profitability.
+
+---
+
+## Trade Persistence and Recovery
+
+V4 uses SQLite as its authoritative persistent trade store.
+
+**Database location:** `runtime_data/v4.db`
+
+The database stores:
+
+- Open positions.
+- Closed trade history.
+- Take-profit state.
+- Trade events.
+- Application settings.
+- Persisted trade context.
+
+The database is created automatically during the first startup when the application initializes its persistence layer.
+
+### Legacy state migration
+
+Earlier versions may have stored trade state in:
+
+`runtime_data/trade_state.json`
+
+When the SQLite database contains no trades and the legacy JSON file exists, V4 imports the legacy state once and renames the source file to:
+
+`runtime_data/trade_state.json.migrated`
+
+This migration path preserves compatibility with the older state format.
+
+**Operational note:** Back up `runtime_data/v4.db` before manually changing or deleting trade-state files. The SQLite database is the authoritative source after migration.
+
+---
+
+## Chart View
+
+V4 includes configurable chart-view scaling in its Control Panel.
+
+Navigate to:
+
+**Control Panel → Settings → Chart View**
+
+Available settings:
+
+- 25%
+- 50%
+- 75%
+- 100%
+
+The default is **100%**.
+
+V4 owns the charting instructions and Telegram snapshot rendering used by its own interface and notifications.
+
+The separate `Visualization/` application is an independent application and is not part of the V4 Scalper project.
+
+---
+
+## Installation and Startup
+
+### Requirements
+
+- Python environment configured for the V4 project.
+- Project dependencies installed.
+- Valid trading and exchange configuration where required.
+
+### Start the application
+
+From the V4 project directory, activate the appropriate environment and run:
+
+```powershell
+python -m app.main
+```
+
+The command launches the V4 application through its Python module entry point.
+
+Use the project's existing dependency manifest and configuration instructions when setting up a new environment.
+
+---
+
+## Project Boundaries
+
+V4 Scalper is a standalone trading application with its own strategy, persistence, trade-management state, and charting/notification responsibilities.
+
+It is distinct from:
+
+- **CLASSIFIED** — shared market-data infrastructure.
+- **Visualization/** — the separate market-data visualization application.
+
+These boundaries are intentional. Shared infrastructure can support multiple systems without merging their strategies, databases, or application lifecycles.
+
+---
+
+## Engineering Priorities
+
+V4 is organized around several operational priorities:
+
+1. **Rule-based entries** — require the defined breakout-and-re-entry sequence.
+2. **Closed-candle confirmation** — use completed five-minute candles for the strategy's confirmation rules.
+3. **Explicit risk references** — derive stop-loss placement from the breakout candle's extreme.
+4. **Persistent trade state** — maintain trade records and management state in SQLite.
+5. **Legacy compatibility** — support one-time migration from the earlier JSON state format.
+6. **Operational visibility** — provide chart-view controls and Telegram snapshot rendering.
+
+---
+
+## Disclaimer
+
+V4 Scalper is a rule-based trading system, not a guarantee of profitable results. Trading involves substantial risk, including the possibility of losing capital. Backtest results, if available, may not reflect live execution, fees, slippage, liquidity constraints, or changing market conditions.
+
