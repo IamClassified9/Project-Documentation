@@ -1,85 +1,153 @@
 # CLASSIFIED
+
 ### Market Data Infrastructure · Real-Time Streaming · Multi-Timeframe Intelligence
 
-**A unified market-data gateway built to power charting applications, analytical engines, and specialist trading systems.**
+**A unified market-data infrastructure package for exchange connectivity, normalized OHLCV data, multi-timeframe requests, and HTTP/WebSocket delivery.**
 
-CLASSIFIED is the shared market-data infrastructure behind a growing ecosystem of market-analysis tools. It provides a centralized interface for retrieving, normalizing, and streaming exchange market data, allowing downstream applications to work with a consistent data contract instead of managing exchange connectivity independently.
+CLASSIFIED provides shared market-data infrastructure for charting applications, analytical engines, and specialist trading systems. It centralizes exchange connectivity and market-data handling so independent consumers can work with a consistent foundation rather than implementing their own exchange integrations.
 
-The gateway brings HTTP-based market-data access and real-time WebSocket streaming together behind a single service.
+The package is published under the distribution name `classifiedai`, while its Python import namespace remains `classified`.
 
 > **Core principle:** One market-data foundation. Multiple independent consumers. A consistent data contract.
 
 ---
 
-## Overview
+## Features
 
-Market-analysis systems often need the same underlying data but consume it in different ways. A charting interface needs historical candles. An analytical engine needs multiple timeframes. A live visualization needs continuous updates without repeatedly requesting the entire dataset.
+- **Exchange connectivity** — integrate with supported exchanges through CCXT.
+- **Normalized OHLCV data** — work with Open, High, Low, Close, and Volume candle data.
+- **Multi-timeframe requests** — request market data at different candle intervals.
+- **Historical market data** — retrieve candles for charting and analysis.
+- **Adaptive candle requirements** — centralize candle-count requirements for data consumers where supported by the active implementation.
+- **HTTP API** — expose market data through HTTP endpoints.
+- **WebSocket streaming** — support persistent connections for live market-data delivery.
+- **Shared infrastructure** — allow independent applications to reuse the same market-data foundation.
 
-CLASSIFIED provides a shared infrastructure layer for these requirements.
+CLASSIFIED is infrastructure, not a trading strategy or trade-execution engine.
 
-Instead of duplicating exchange integration across every application, consumers can request market data through a centralized gateway designed to support historical retrieval and live streaming.
+---
 
-### What CLASSIFIED provides
+## Installation
 
-- **Unified market-data access** — a consistent interface for requesting exchange candle data.
-- **Multi-timeframe support** — access to market data across timeframes such as 4H, 1H, 15M, and 5M.
-- **Historical OHLCV retrieval** — retrieve Open, High, Low, Close, and Volume data for charting and analysis.
-- **Real-time WebSocket streaming** — establish persistent connections for live market-data delivery.
-- **HTTP and WebSocket transport** — use REST-style requests for snapshots and WebSockets for continuous updates.
-- **Visualization integration** — expose market data through endpoints designed to support the Visualization frontend.
-- **Shared infrastructure** — allow independent specialist systems to consume the same market-data foundation.
+Install the package from PyPI:
+
+```bash
+python -m pip install classifiedai
+```
+
+### Requirements
+
+- Python 3.12 or newer.
+- Network access to the configured exchange where live exchange data is required.
+- Appropriate exchange configuration for the selected data source.
+
+### Verify the installation
+
+```bash
+python -c "import classified; print(classified.__file__)"
+```
+
+The distribution name used by `pip` is `classifiedai`. The import namespace used in Python remains `classified`.
+
+### Install optional test dependencies
+
+```bash
+python -m pip install "classifiedai[test]"
+```
+
+This command is available when the published release includes the `test` optional dependency extra.
 
 ---
 
 ## Architecture
 
 ```text
-                   EXCHANGE DATA SOURCE
-                            |
-                            v
-                 +----------------------+
-                 |   CLASSIFIED Core    |
-                 |                      |
-                 | Exchange Connectivity|
-                 | OHLCV Normalization  |
-                 | Multi-Timeframe Data |
-                 | Candle Requirements  |
-                 | Cache & Freshness    |
-                 +----------+-----------+
-                            |
-                            v
-                 +----------------------+
-                 |   API Gateway        |
-                 |                      |
-                 | HTTP / REST          |
-                 | WebSocket Streaming  |
-                 | Port 8080             |
-                 +----------+-----------+
-                            |
-              +-------------+-------------+
-              |             |             |
-              v             v             v
-         Visualization   Specialist    Other Data
-          Frontend       Systems       Consumers
+                  EXCHANGE DATA SOURCE
+                          |
+                          v
+                +----------------------+
+                |   CLASSIFIED Core    |
+                |                      |
+                | Exchange Connectivity|
+                | OHLCV Normalization  |
+                | Multi-Timeframe Data |
+                | Candle Requirements  |
+                | Cache & Freshness    |
+                +----------+-----------+
+                           |
+                           v
+                +----------------------+
+                |     API Gateway      |
+                |                      |
+                | HTTP / REST          |
+                | WebSocket Streaming  |
+                +----------+-----------+
+                           |
+              +------------+------------+
+              |            |            |
+              v            v            v
+         Visualization  Analytical   Other Data
+          Applications   Systems     Consumers
 ```
 
-*Conceptual architecture. Components shown describe the intended infrastructure boundaries; exact internal module responsibilities depend on the implementation.*
-
-### The gateway
-
-The API gateway is the boundary between CLASSIFIED's market-data infrastructure and its external consumers.
-
-The current gateway uses **`aiohttp`** to serve HTTP requests and WebSocket connections through the same asynchronous server on port `8080`.
-
-This transport design addresses the previous WebSocket handshake conflict by using one server framework for both protocols.
-
-The gateway is infrastructure, not a trading strategy.
+*Conceptual architecture. The precise responsibilities and available capabilities depend on the installed implementation and its configuration.*
 
 ---
 
-## API Reference
+## Market Data
 
-### 1. Health Check
+CLASSIFIED is designed to provide a common interface for market-data consumers that need historical candles, multiple timeframes, or continuous updates.
+
+### OHLCV data
+
+OHLCV represents:
+
+| Field | Meaning |
+|---|---|
+| Open | Opening price for a candle |
+| High | Highest price reached during the candle |
+| Low | Lowest price reached during the candle |
+| Close | Closing price for a candle |
+| Volume | Volume recorded during the candle |
+
+### Multi-timeframe access
+
+Example candle intervals include:
+
+| Timeframe | Typical analytical use |
+|---|---|
+| `4h` | Higher-timeframe market structure |
+| `1h` | Intermediate market context |
+| `15m` | Intraday price action |
+| `5m` | Short-term price monitoring |
+
+These are example intervals, not trading signals. Actual supported intervals and candle limits depend on the exchange and implementation.
+
+---
+
+## API Gateway
+
+The gateway provides HTTP-based access and WebSocket streaming through an asynchronous server using `aiohttp`.
+
+The documented local server address is:
+
+```text
+http://127.0.0.1:8080
+```
+
+The server must be started separately when using the gateway endpoints.
+
+### Start the gateway
+
+From an environment where CLASSIFIED and its dependencies are installed, run:
+
+```bash
+python -m classified.api.server
+```
+
+The server is configured to listen on port `8080` in the documented setup.
+
+### 1. Health check
 
 **Method:** `GET`
 
@@ -87,13 +155,15 @@ The gateway is infrastructure, not a trading strategy.
 GET /health
 ```
 
-Local endpoint:
+Local URL:
 
-`http://127.0.0.1:8080/health`
+```text
+http://127.0.0.1:8080/health
+```
 
 Use this endpoint to check whether the gateway is responding.
 
-### 2. Historical Candle Data
+### 2. Historical candle data
 
 **Method:** `GET`
 
@@ -101,30 +171,30 @@ Use this endpoint to check whether the gateway is responding.
 GET /api/v1/market-data/candles
 ```
 
-**Query parameters**
+Query parameters:
 
 | Parameter | Description | Example |
 |---|---|---|
 | `symbol` | Trading pair | `BTC/USDT` |
 | `timeframe` | Candle interval | `5m` |
-| `candle_count` | Requested number of candles | `150` |
+| `candle_count` | Requested candle count | `150` |
 
-Example request:
+Example URL:
 
-```http
+```text
 http://127.0.0.1:8080/api/v1/market-data/candles?symbol=BTC%2FUSDT&timeframe=5m&candle_count=150
 ```
 
-Example using PowerShell:
+PowerShell example:
 
 ```powershell
 Invoke-RestMethod `
   "http://127.0.0.1:8080/api/v1/market-data/candles?symbol=BTC%2FUSDT&timeframe=5m&candle_count=150"
 ```
 
-The endpoint is intended to supply historical candle data to charting and analytical consumers. The exact response schema should be taken from the implementation.
+The endpoint is intended to supply historical candle data to charting and analytical consumers. Consult the active server implementation for the exact response schema and error behavior.
 
-### 3. Live Market-Data Stream
+### 3. Live market-data stream
 
 **Protocol:** WebSocket
 
@@ -132,162 +202,8 @@ The endpoint is intended to supply historical candle data to charting and analyt
 ws://127.0.0.1:8080/api/v1/market-data/stream
 ```
 
-**Query parameters**
+Query parameters:
 
 | Parameter | Description | Example |
 |---|---|---|
-| `symbol` | Trading pair | `BTC/USDT` |
-| `timeframe` | Candle interval | `5m` |
-
-Connection URL:
-
-```text
-ws://127.0.0.1:8080/api/v1/market-data/stream?symbol=BTC%2FUSDT&timeframe=5m
-```
-
-The WebSocket endpoint provides a persistent connection for live market-data delivery.
-
-A client should handle connection failures, disconnections, and reconnection attempts. The precise message format, update cadence, subscription behavior, and reconnection contract must match the server implementation.
-
----
-
-## Technology Stack
-
-| Technology | Responsibility |
-|---|---|
-| Python | Core infrastructure and asynchronous execution |
-| `aiohttp` | HTTP server and WebSocket transport |
-| CCXT | Exchange connectivity where configured |
-| OHLCV | Standard candle-data representation |
-| REST API | Historical market-data requests |
-| WebSockets | Persistent streaming connections |
-
-The precise dependency versions and supported exchange capabilities are defined by the project's installed dependencies and implementation.
-
----
-
-## Getting Started
-
-### Requirements
-
-- Python environment used by the CLASSIFIED integration
-- Project dependencies installed
-- Valid exchange connectivity and configuration where required
-
-### 1. Activate the V4 environment
-
-Run the following commands from the appropriate project directory in PowerShell, adjusting the environment path to match your local setup:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-### 2. Install or verify dependencies
-
-If `aiohttp` is not already installed in the active environment:
-
-```powershell
-python -m pip install aiohttp
-```
-
-Install the remaining project dependencies according to the repository's dependency manifest.
-
-### 3. Start the gateway
-
-```powershell
-python -m classified.api.server
-```
-
-The server should listen on port `8080` when configured as described.
-
-### 4. Verify the service
-
-Open:
-
-```text
-http://127.0.0.1:8080/health
-```
-
-Then test a historical candle request using the endpoint documented above.
-
-Finally, connect a WebSocket client to the streaming endpoint to verify live delivery.
-
----
-
-## Multi-Timeframe Market Data
-
-CLASSIFIED is designed to support consumers that analyze market structure across multiple timeframes.
-
-Examples include:
-
-| Timeframe | Typical analytical use |
-|---|---|
-| 4H | Higher-timeframe structure and broader market context |
-| 1H | Intermediate structure and directional context |
-| 15M | Intraday structure and developing setups |
-| 5M | Fine-grained price action and short-term monitoring |
-
-These are example analytical uses, not trading signals generated by the gateway.
-
-Requested candle counts can be configured by consumers. The shared infrastructure is intended to handle market-data requirements centrally rather than forcing each consumer to implement its own exchange-fetching logic.
-
-Actual candle limits, adaptive retrieval behavior, cache policy, and freshness guarantees depend on the active core implementation.
-
----
-
-## Designed for an Independent Ecosystem
-
-CLASSIFIED is intended to serve as shared infrastructure for independent applications and specialist analytical systems.
-
-
-These systems remain separate consumers. Their strategies, decision-making, and execution logic do not become part of CLASSIFIED simply because they use its infrastructure.
-
----
-
-## Project Boundaries
-
-CLASSIFIED is a shared market-data infrastructure project.
-
-It is **not**:
-
-- A standalone trading bot.
-- A replacement for specialist analytical engines.
-- A trade-execution engine.
-- A strategy package containing Hotlist or trading rules.
-
-Its responsibility is to provide market data and the interfaces through which supported consumers access it.
-
-Keeping this boundary explicit makes the infrastructure easier to maintain, test, extend, and reuse.
-
----
-
-## Engineering Priorities
-
-The infrastructure is designed around the following priorities:
-
-1. **Consistency** — normalize market data into a predictable interface.
-2. **Separation of concerns** — isolate shared data infrastructure from consumer-specific logic.
-3. **Transport compatibility** — support both request-response access and persistent streaming.
-4. **Multi-timeframe access** — serve different analytical resolutions through a common foundation.
-5. **Reliability** — handle exchange failures, connection interruptions, and data-quality concerns according to implemented policies.
-6. **Extensibility** — allow additional consumers to integrate without duplicating the entire market-data layer.
-
-These priorities describe the engineering direction; individual guarantees must be verified against the implemented code and tests.
-
----
-
-## Status
-
-The API gateway is configured around `aiohttp` for HTTP and WebSocket transport on port `8080`.
-
-The gateway's endpoint contract and transport behavior should be validated against the active implementation before a deployment is considered production-ready.
-
-Areas to verify include:
-
-- Exchange connectivity and error handling.
-- Historical candle completeness and timestamp consistency.
-- Cache behavior and data freshness.
-- WebSocket message schemas and update cadence.
-- Client reconnection behavior.
-- Concurrent connection handling.
-- Authentication, rate limiting, and deployment security where required.
+| `symbol`
